@@ -32,98 +32,160 @@ def vigenere_decrypt(ciphertext, key):
     return plaintext
 
 # Playfair Cipher
-def generate_playfair_key_matrix(key):
-    matrix = []
-    key = key.lower().replace("j", "i")
-    key_matrix = ""
-    for c in key:
-        if c not in key_matrix and c.isalpha():
-            key_matrix += c
-    for i in range(26):
-        c = chr(i + 97)
-        if c not in key_matrix and c != 'j':
-            key_matrix += c
-    for i in range(0, 25, 5):
-        matrix.append(key_matrix[i:i+5])
-    return matrix
+def generate_playfair_square(key):
+    alphabet = 'abcdefghiklmnopqrstuvwxyz'  # 'j' is omitted in Playfair cipher
+    key = ''.join(sorted(set(key), key=lambda x: key.index(x)))  # Remove duplicates
+    key = key.replace('j', 'i')  # Treat 'j' as 'i'
+    square = []
 
+    for char in key:
+        if char not in square:
+            square.append(char)
+    for char in alphabet:
+        if char not in square:
+            square.append(char)
+
+    return [square[i:i+5] for i in range(0, len(square), 5)]  # 5x5 matrix
+
+def find_position(char, square):
+    for i, row in enumerate(square):
+        if char in row:
+            return i, row.index(char)
+    return None
+
+# Playfair Cipher Encryption
 def playfair_encrypt(plaintext, key):
-    matrix = generate_playfair_key_matrix(key)
-    plaintext = plaintext.lower().replace("j", "i")
-    plaintext_pairs = []
+    square = generate_playfair_square(key.lower())
+    plaintext = plaintext.replace('j', 'i').replace(' ', '').lower()
+
+    # Prepare digraphs (pairs of letters)
+    digraphs = []
     i = 0
     while i < len(plaintext):
         a = plaintext[i]
-        b = plaintext[i+1] if i+1 < len(plaintext) else 'x'
-        if a == b:
-            b = 'x'
-            i += 1
-        else:
+        if i + 1 < len(plaintext) and plaintext[i + 1] != a:
+            b = plaintext[i + 1]
             i += 2
-        plaintext_pairs.append(a + b)
-    
-    ciphertext = ''
-    for pair in plaintext_pairs:
-        pos_a = find_position(pair[0], matrix)
-        pos_b = find_position(pair[1], matrix)
-        if pos_a[0] == pos_b[0]:
-            ciphertext += matrix[pos_a[0]][(pos_a[1]+1) % 5]
-            ciphertext += matrix[pos_b[0]][(pos_b[1]+1) % 5]
-        elif pos_a[1] == pos_b[1]:
-            ciphertext += matrix[(pos_a[0]+1) % 5][pos_a[1]]
-            ciphertext += matrix[(pos_b[0]+1) % 5][pos_b[1]]
         else:
-            ciphertext += matrix[pos_a[0]][pos_b[1]]
-            ciphertext += matrix[pos_b[0]][pos_a[1]]
+            b = 'x' if a != 'x' else 'z'
+            i += 1
+        digraphs.append((a, b))
+
+    ciphertext = ''
+    for a, b in digraphs:
+        row_a, col_a = find_position(a, square)
+        row_b, col_b = find_position(b, square)
+
+        if row_a == row_b:
+            # Same row
+            ciphertext += square[row_a][(col_a + 1) % 5]
+            ciphertext += square[row_b][(col_b + 1) % 5]
+        elif col_a == col_b:
+            # Same column
+            ciphertext += square[(row_a + 1) % 5][col_a]
+            ciphertext += square[(row_b + 1) % 5][col_b]
+        else:
+            # Rectangle rule
+            ciphertext += square[row_a][col_b]
+            ciphertext += square[row_b][col_a]
+
     return ciphertext
 
+# Playfair Cipher Decryption
 def playfair_decrypt(ciphertext, key):
-    matrix = generate_playfair_key_matrix(key)
-    plaintext = ''
-    for i in range(0, len(ciphertext), 2):
-        a, b = ciphertext[i], ciphertext[i+1]
-        pos_a = find_position(a, matrix)
-        pos_b = find_position(b, matrix)
-        if pos_a[0] == pos_b[0]:
-            plaintext += matrix[pos_a[0]][(pos_a[1]-1) % 5]
-            plaintext += matrix[pos_b[0]][(pos_b[1]-1) % 5]
-        elif pos_a[1] == pos_b[1]:
-            plaintext += matrix[(pos_a[0]-1) % 5][pos_a[1]]
-            plaintext += matrix[(pos_b[0]-1) % 5][pos_b[1]]
-        else:
-            plaintext += matrix[pos_a[0]][pos_b[1]]
-            plaintext += matrix[pos_b[0]][pos_a[1]]
-    return plaintext
+    square = generate_playfair_square(key.lower())
 
-def find_position(letter, matrix):
-    for i, row in enumerate(matrix):
-        for j, char in enumerate(row):
-            if char == letter:
-                return i, j
-    return None
+    digraphs = [(ciphertext[i], ciphertext[i+1]) for i in range(0, len(ciphertext), 2)]
+
+    plaintext = ''
+    for a, b in digraphs:
+        row_a, col_a = find_position(a, square)
+        row_b, col_b = find_position(b, square)
+
+        if row_a == row_b:
+            # Same row
+            plaintext += square[row_a][(col_a - 1) % 5]
+            plaintext += square[row_b][(col_b - 1) % 5]
+        elif col_a == col_b:
+            # Same column
+            plaintext += square[(row_a - 1) % 5][col_a]
+            plaintext += square[(row_b - 1) % 5][col_b]
+        else:
+            # Rectangle rule
+            plaintext += square[row_a][col_b]
+            plaintext += square[row_b][col_a]
+
+    # Remove potential dummy 'x' or 'z' characters
+    # Decrypt usually adds extra characters like 'x' (or 'z') between double letters or at the end.
+    plaintext_fixed = ''
+    i = 0
+    while i < len(plaintext):
+        plaintext_fixed += plaintext[i]
+        # Skip the 'x' if it's a dummy letter between double letters
+        if i + 1 < len(plaintext) and plaintext[i] == plaintext[i + 1]:
+            i += 1
+        i += 1
+
+    return plaintext_fixed
+
+import numpy as np
 
 # Hill Cipher
+def mod_inverse(a, m):
+    # Menghitung invers modulo a mod m menggunakan Extended Euclidean Algorithm
+    a = a % m
+    for x in range(1, m):
+        if (a * x) % m == 1:
+            return x
+    return None
+
 def hill_encrypt(plaintext, key_matrix):
-    key_matrix = np.array(key_matrix)
-    plaintext = [ord(c) - ord('a') for c in plaintext.lower()]
-    if len(plaintext) % 3 != 0:
-        plaintext += [ord('x') - ord('a')] * (3 - len(plaintext) % 3)
-    ciphertext = ""
-    for i in range(0, len(plaintext), 3):
-        block = np.array(plaintext[i:i+3]).reshape(3, 1)
+    plaintext = plaintext.lower().replace(" ", "")
+    n = len(key_matrix)  # Ukuran matriks (misalnya 3x3)
+    
+    # Padding jika plaintext tidak sesuai ukuran matriks
+    while len(plaintext) % n != 0:
+        plaintext += 'x'
+    
+    # Convert plaintext menjadi vektor angka
+    plaintext_vector = [ord(char) - ord('a') for char in plaintext]
+    
+    # Pisahkan plaintext menjadi blok sesuai ukuran matriks
+    ciphertext = ''
+    for i in range(0, len(plaintext_vector), n):
+        block = np.array(plaintext_vector[i:i + n])
+        # Perkalian matriks (key_matrix * block) mod 26
         encrypted_block = np.dot(key_matrix, block) % 26
-        ciphertext += ''.join([chr(int(num) + ord('a')) for num in encrypted_block.flatten()])
+        ciphertext += ''.join(chr(num + ord('a')) for num in encrypted_block)
+    
     return ciphertext
 
 def hill_decrypt(ciphertext, key_matrix):
-    key_matrix = np.array(key_matrix)
-    key_inverse = np.linalg.inv(key_matrix).astype(int) % 26
-    ciphertext = [ord(c) - ord('a') for c in ciphertext.lower()]
-    plaintext = ""
-    for i in range(0, len(ciphertext), 3):
-        block = np.array(ciphertext[i:i+3]).reshape(3, 1)
-        decrypted_block = np.dot(key_inverse, block) % 26
-        plaintext += ''.join([chr(int(num) + ord('a')) for num in decrypted_block.flatten()])
+    n = len(key_matrix)  # Ukuran matriks (misalnya 3x3)
+    
+    # Cari invers dari matriks kunci
+    det = int(np.round(np.linalg.det(key_matrix)))  # Determinan
+    det_inv = mod_inverse(det, 26)  # Invers determinan modulo 26
+    
+    if det_inv is None:
+        raise ValueError("Matriks kunci tidak bisa di-invert.")
+    
+    # Cari invers matriks kunci (mod 26)
+    key_matrix_inv = np.linalg.inv(key_matrix) * det
+    key_matrix_inv = np.round(key_matrix_inv).astype(int) % 26
+    key_matrix_inv = (det_inv * key_matrix_inv) % 26
+    
+    # Convert ciphertext menjadi vektor angka
+    ciphertext_vector = [ord(char) - ord('a') for char in ciphertext]
+    
+    # Pisahkan ciphertext menjadi blok sesuai ukuran matriks
+    plaintext = ''
+    for i in range(0, len(ciphertext_vector), n):
+        block = np.array(ciphertext_vector[i:i + n])
+        # Perkalian matriks (key_matrix_inv * block) mod 26
+        decrypted_block = np.dot(key_matrix_inv, block) % 26
+        plaintext += ''.join(chr(int(num) + ord('a')) for num in decrypted_block)
+    
     return plaintext
 
 # Buka file dialog
